@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web-indexing-service
+  labels:
+    app: {{ .Release.Name }}-web-indexing-service
+    chart: {{ template "gs.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.webIndexingService.replicaCount }}
+{{- with .Values.webIndexingService.strategy }}
+  strategy:
+{{ toYaml . | indent 4  }}
+{{ end }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-web-indexing-service
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        timestamp: {{ now | quote }}
+      labels:
+        app: {{ .Release.Name }}-web-indexing-service
+        release: {{ .Release.Name }}
+    spec:
+      volumes:
+{{ if .Values.global.elasticsearch.tls.enable }}
+        - name: tls-certs
+          secret:
+            secretName: {{ include "global.elasticsearch.tlsSecretName" . }}
+            items:
+              - key: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
+                path: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+        - name: rabbitmq-tls-certs
+          secret:
+            secretName: {{ include "global.rabbitmq.tlsSecretName" . }}
+            items:
+              - key: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
+                path: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
+{{- end }}
+        - name: log4net-file
+          configMap:
+            name: {{ .Release.Name }}-logging-configmap
+            items:
+              - key: log4net.config
+                path: log4net.config
+{{ if .Values.webIndexingService.nodeName }}
+      nodeName: {{ .Values.webIndexingService.nodeName }}
+{{- end }}
+{{ if .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{ toYaml .Values.image.pullSecrets | indent 8 }}
+{{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.webIndexingService.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: log4net-file
+              mountPath: {{ .Values.log4Net.mountPath }}
+{{ if .Values.global.elasticsearch.tls.enable }}
+            - name: tls-certs
+              mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+            - name: rabbitmq-tls-certs
+              mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: IndexEntityPublisherConfiguration__QueueName
+              value: {{ .Values.global.rabbitmq.qname.singleTaskInbox }}
+            - name: IndexEntityPublisherConfiguration__QueuePriorityEnable
+              value: '{{ .Values.global.rabbitmq.queuePriorityEnable }}'
+            - name: QueriedIndexEntityPublisherConfiguration__QueueName
+              value: {{ .Values.global.rabbitmq.qname.singleQueriedTaskInbox }}
+            - name: QueriedIndexEntityPublisherConfiguration__QueuePriorityEnable
+              value: '{{ .Values.global.rabbitmq.queuePriorityEnable }}'
+            - name: RabbitMQSettings__QueuePriorityEnable
+              value: '{{ .Values.global.rabbitmq.queuePriorityEnable }}'
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__IsEnabled
+              value: "{{ .Values.global.rabbitmq.tls.enable }}"
+{{- if (include "global.rabbitmq.useCustomCaCertificate" . | trim | eq "true") }}
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__CaCertificatePath
+              value: "{{ .Values.global.rabbitmq.tls.certificate.ca.path }}/{{ .Values.global.rabbitmq.tls.certificate.ca.name }}"
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__SkipCertificateValidation
+              value: "{{ .Values.global.rabbitmq.tls.certificate.skipCertificateValidation }}"
+{{- end }}
+            - name: PublisherPriority__HighPrioritySilencePeriodSec
+              value: "{{ .Values.webIndexingService.publisherHighPrioritySilencePeriodSec | int64 }}"
+            - name: PublisherPriority__HighPriorityMaxEntitiesPerSilencePeriod
+              value: "{{ .Values.webIndexingService.publisherHighPriorityMaxEntitiesPerSilencePeriod | int64  }}"
+            - name: workerThreads
+              value: "{{ .Values.webIndexingService.workerThreads | int64  }}"
+            - name: completionPortThreads
+              value: "{{ .Values.webIndexingService.completionPortThreads | int64  }}"
+            - name: RedisCacheOptions__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: redisConnectionString
+            - name: RedisCacheOptions__ConnectAttempts
+              value: {{ .Values.global.redis.connectAttempts | quote }}
+            - name: RedisCacheOptions__ReconnectInterval
+              value: {{ .Values.global.redis.reconnectInterval }}
+            - name: RedisCacheOptions__DefaultExpiration
+              value: {{ .Values.global.redis.defaultExpiration }}
+            - name: elasticSearchUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-global-config-map
+                  key: es.url
+            - name: elasticLogin
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchUser
+            - name: elasticPassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchPassword
+            - name: ElasticSearch__Tls__Enable
+              value: "{{ .Values.global.elasticsearch.tls.enable }}"
+{{ if .Values.global.elasticsearch.tls.enable }}
+            - name: ElasticSearch__Tls__CaCertificatePath
+              value: "{{ .Values.global.elasticsearch.tls.certificate.ca.path }}/{{ .Values.global.elasticsearch.tls.certificate.ca.name }}"
+{{- end }}
+            - name: RabbitMQSettings__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: rabbitmqConnectionString
+            - name: Log4NetPath
+              value: {{ .Values.log4Net.mountPath }}/log4net.config
+{{ if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: http
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+{{- end }}
+{{ if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: http
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+{{- end }}
+          resources:
+{{ toYaml .Values.webIndexingService.resources | indent 12 }}
+    {{- with .Values.webIndexingService.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.webIndexingService.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.webIndexingService.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}

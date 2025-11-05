@@ -1,0 +1,36 @@
+{{- if .Values.webIndexingService.ingress.enabled -}}
+{{- $ingressApiIsStable := eq (include "ingress.isStable" .) "true" -}}
+{{- $ingressSupportsPathType := eq (include "ingress.supportsPathType" .) "true" -}}
+{{- $ingressSupportsIngressClassName := eq (include "ingress.supportsIngressClassName" .) "true" -}}
+{{- $ingressPathType := .Values.webIndexingService.ingress.pathType -}}
+apiVersion: {{ template "ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-web-indexing-service
+{{- with .Values.webIndexingService.ingress.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+spec:
+  {{- if and $ingressSupportsIngressClassName .Values.webIndexingService.ingress.className }}
+  ingressClassName: {{ .Values.webIndexingService.ingress.className }}
+  {{- end }}
+  rules:
+  - host: {{ .Values.webIndexingService.ingress.host }}
+    http:
+      paths:
+        - path: {{ .Values.webIndexingService.ingress.path }}
+          {{- if $ingressSupportsPathType }}
+          pathType: {{ $ingressPathType }}
+          {{- end }}
+          backend:
+            {{- if $ingressApiIsStable }}
+            service:
+              name: {{ .Release.Name }}-web-indexing-service
+              port:
+                number: {{ .Values.webIndexingService.service.port }}
+            {{- else }}
+            serviceName: {{ .Release.Name }}-web-indexing-service
+            servicePort: {{ .Values.webIndexingService.service.port }}
+            {{- end }}
+{{- end }}

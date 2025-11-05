@@ -1,0 +1,36 @@
+{{- if .Values.webApi.ingress.enabled -}}
+{{- $ingressApiIsStable := eq (include "ingress.isStable" .) "true" -}}
+{{- $ingressSupportsPathType := eq (include "ingress.supportsPathType" .) "true" -}}
+{{- $ingressSupportsIngressClassName := eq (include "ingress.supportsIngressClassName" .) "true" -}}
+{{- $ingressPathType := .Values.webApi.ingress.pathType -}}
+apiVersion: {{ template "ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-web-api
+{{- with .Values.webApi.ingress.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+spec:
+  {{- if and $ingressSupportsIngressClassName .Values.webApi.ingress.className }}
+  ingressClassName: {{ .Values.webApi.ingress.className }}
+  {{- end }}
+  rules:
+  - host: {{ .Values.webApi.ingress.host }}
+    http:
+      paths:
+        - path: {{ .Values.webApi.ingress.path }}
+          {{- if $ingressSupportsPathType }}
+          pathType: {{ $ingressPathType }}
+          {{- end }}
+          backend:
+            {{- if $ingressApiIsStable }}
+            service:
+              name: {{ .Release.Name }}-web-api
+              port:
+                number: {{ .Values.webApi.service.port }}
+            {{- else }}
+            serviceName: {{ .Release.Name }}-web-api
+            servicePort: {{ .Values.webApi.service.port }}
+            {{- end }}
+{{- end }}

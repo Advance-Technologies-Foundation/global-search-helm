@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web-api
+  labels:
+    app: {{ .Release.Name }}-web-api
+    chart: {{ template "gs.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.webApi.service.type }}
+  {{- if (and (eq .Values.webApi.service.type "NodePort") (not (empty .Values.webApi.service.externalTrafficPolicy))) }}
+  externalTrafficPolicy: {{ .Values.webApi.service.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.webApi.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+      {{- if (and (eq .Values.webApi.service.type "NodePort") (not (empty .Values.webApi.service.nodePort))) }}
+      nodePort: {{ .Values.webApi.service.nodePort }}
+      {{- end }}
+  selector:
+    app: {{ .Release.Name }}-web-api
+    release: {{ .Release.Name }}
