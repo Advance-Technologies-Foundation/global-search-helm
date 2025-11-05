@@ -1,0 +1,52 @@
+Thank you for installing {{ .Chart.Name }}.
+Your release is named {{ .Release.Name }}.
+To learn more about the release, try:
+
+$ helm status {{ .Release.Name }}
+$ helm get all {{ .Release.Name }}
+
+Web API:
+{{- if .Values.webApi.ingress.enabled }}
+http://{{ .Values.webApi.ingress.host }}{{ $.Values.webApi.ingress.path }}
+{{- else if contains "NodePort" .Values.webApi.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ .Release.Name }}-web-api)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.webApi.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get svc -w {{ .Release.Name }}-web-api'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ .Release.Name }}-web-api -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP:{{ .Values.webApi.service.port }}
+{{- end }}
+
+Web indexing service:
+{{- if .Values.webIndexingService.ingress.enabled }}
+http://{{ .Values.webIndexingService.ingress.host }}{{ $.Values.webIndexingService.ingress.path }}
+{{- else if contains "NodePort" .Values.webIndexingService.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ .Release.Name }}-web-indexing-service)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.webIndexingService.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get svc -w {{ .Release.Name }}-web-indexing-service'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ .Release.Name }}-web-indexing-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP:{{ .Values.webIndexingService.service.port }}
+{{- end }}
+
+Search service:
+{{- if .Values.searchService.ingress.enabled }}
+http://{{ .Values.searchService.ingress.host }}{{ $.Values.searchService.ingress.path }}
+{{- else if contains "NodePort" .Values.searchService.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ .Release.Name }}-search-service)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.searchService.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get svc -w {{ .Release.Name }}-search-service'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ .Release.Name }}-search-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+  echo http://$SERVICE_IP:{{ .Values.searchService.service.port }}
+{{- end }}
+
+Please register site and add search using web api swagger - [web api url]/api/index.html
+Set system settings and enable features in Creatio.
+Go to Terrasoft academy for more details https://academy.creatio.com/docs/user/setup_and_administration/on-site_deployment/containerized_components.

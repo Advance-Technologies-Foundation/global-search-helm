@@ -1,0 +1,387 @@
+image:
+  tag: 6.0.27
+  pullPolicy: IfNotPresent
+webApi:
+  replicaCount: 2
+  strategy:
+    type: RollingUpdate
+  image:
+    repository: registry.creatio.com/gs-web-api
+  resources:
+    requests:
+      memory: 120Mi
+      cpu: 20m
+    limits:
+      memory: 250Mi
+      cpu: 100m
+  service:
+    type: ClusterIP
+    port: 80
+    externalTrafficPolicy: Cluster
+    nodePort: ''
+  ingress:
+    enabled: false
+    host: web-api.onsite.com
+    path: /
+    pathType: Prefix
+    className: nginx
+    annotations:
+      ingress.kubernetes.io/ssl-redirect: 'false'
+      ingress.kubernetes.io/rewrite-target: /
+  env:
+    ignoredEntities: UsrVwEmployee,UsrVwEmployeeFile,VwSysProcessLog,SysPrcHistoryLog,ActivityFile,MLModel,MLModelFile,SysSettings,VwWebServiceV2,Activity,UsrVwEmailActivity,CyclicTasks,CallCdr,CallCdrFile
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+  workerThreads: 25
+  completionPortThreads: 25
+webIndexingService:
+  replicaCount: 2
+  strategy:
+    type: RollingUpdate
+  image:
+    repository: registry.creatio.com/gs-web-indexing-service
+  service:
+    type: ClusterIP
+    port: 80
+    externalTrafficPolicy: Cluster
+    nodePort: ''
+  resources:
+    requests:
+      memory: 200Mi
+      cpu: 100m
+    limits:
+      memory: 300Mi
+      cpu: 200m
+  ingress:
+    enabled: false
+    host: indexing-service.onsite.com
+    path: /
+    pathType: Prefix
+    className: nginx
+    annotations:
+      ingress.kubernetes.io/ssl-redirect: 'false'
+      ingress.kubernetes.io/rewrite-target: /
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+  publisherHighPrioritySilencePeriodSec: 30
+  publisherHighPriorityMaxEntitiesPerSilencePeriod: 5
+  workerThreads: 200
+  completionPortThreads: 200
+searchService:
+  replicaCount: 2
+  strategy:
+    type: RollingUpdate
+  image:
+    repository: registry.creatio.com/gs-search-service
+  service:
+    type: ClusterIP
+    port: 80
+    externalTrafficPolicy: Cluster
+    nodePort: ''
+  resources:
+    requests:
+      memory: 100Mi
+      cpu: 20m
+    limits:
+      memory: 200Mi
+      cpu: 100m
+  ingress:
+    enabled: false
+    host: search-service.onsite.com
+    path: /
+    pathType: Prefix
+    className: nginx
+    annotations:
+      ingress.kubernetes.io/ssl-redirect: 'false'
+      ingress.kubernetes.io/rewrite-target: /
+    elastic:
+      enableEndpoint: false
+    rabbitmq:
+      enableEndpoint: false
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+scheduler:
+  replicaCount: 1
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-scheduler
+  resources:
+    requests:
+      memory: 80Mi
+      cpu: 20m
+    limits:
+      memory: 200Mi
+      cpu: 100m
+  env:
+    fillQueueInterval: 30000
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+worker:
+  replicaCount: 2
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker
+  resources:
+    requests:
+      memory: 100Mi
+      cpu: 50m
+    limits:
+      memory: 400Mi
+      cpu: 300m
+  env:
+    indexingCommandTimeout: 900
+    maxIndexingPagesCount: 100
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerPrimary:
+  replicaCount: 2
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-primary
+  resources:
+    requests:
+      memory: 100Mi
+      cpu: 50m
+    limits:
+      memory: 400Mi
+      cpu: 300m
+  env:
+    indexingCommandTimeoutSec: 900
+    maxIndexingPagesCount: 100
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerReplay:
+  replicaCount: 3
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-replay
+  resources:
+    requests:
+      memory: 80Mi
+      cpu: 10m
+    limits:
+      memory: 150Mi
+      cpu: 50m
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerSingle:
+  replicaCount: 7
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-single
+  resources:
+    requests:
+      memory: 80Mi
+      cpu: 20m
+    limits:
+      memory: 350Mi
+      cpu: 100m
+  env:
+    indexingCommandTimeout: 10
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerSingleReplay:
+  replicaCount: 4
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-single-replay
+  resources:
+    requests:
+      memory: 80Mi
+      cpu: 10m
+    limits:
+      memory: 150Mi
+      cpu: 50m
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerSingleTask:
+  replicaCount: 7
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-single-task
+  resources:
+    requests:
+      memory: 80Mi
+      cpu: 20m
+    limits:
+      memory: 150Mi
+      cpu: 300m
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+workerQueriedSingleTask:
+  replicaCount: 5
+  strategy:
+    type: Recreate
+  image:
+    repository: registry.creatio.com/gs-worker-queried-single-task
+  elasticsearch:
+    scrollBatchSize: 0
+    scrollTimeout: 60000
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 150m
+  affinity: {}
+  tolerations: []
+  nodeSelector: {}
+log4Net:
+  debugMode: false
+  mountPath: /app/config
+  level: DEBUG
+  grayLog:
+    enabled: false
+    AMQP:
+      host: graylog-rabbitmq
+      port: 5672
+      userName: user
+      password: password
+      virtualHost: /
+      exchange: gs-logs
+      routingKey: gs-logs
+global:
+  circuitBreaker:
+    enable: true
+  elasticsearch:
+    url: http://elasticsearch-master:9200
+    publicUrl: ''
+    user: ''
+    password: ''
+    enableDebugMode: false
+    traceDebugInfo: false
+    traceDebugInfoForIndex: ''
+    tls:
+      enable: false
+      certificate:
+        ca:
+          name: ca.crt
+          path: /app/certs
+        copyFrom:
+          secretName: elasticsearch-master-crt
+          fullSecretNameOverride: ''
+  searchService:
+    url: http://search-service:80
+  identityProvider:
+    url: ''
+    useOAuth: false
+  webApi:
+    url: ''
+  rabbitmq:
+    host: rabbitmq
+    vhost: /
+    port: 5672
+    user: user
+    password: password
+    queuePriorityEnable: false
+    connectionSettings:
+      networkRecoveryInterval: 00:00:05
+      automaticRecoveryEnabled: true
+      requestedConnectionTimeout: 10000
+    tls:
+      enable: false
+      networkRecoveryInterval: 5000
+      useCustomCaCertificate: false
+      certificate:
+        ca:
+          name: tls.crt
+          path: /app/certs/rabbitmq
+        copyFrom:
+          secretName: rabbitmq-certs
+          fullSecretNameOverride: ''
+        skipCertificateValidation: false
+    qname:
+      inbox: gs-inbox
+      primaryInbox: gs-primary-inbox
+      outbox: gs-outbox
+      singleTaskInbox: gs-single-task-inbox
+      singleQueriedTaskInbox: gs-single-queried-task-inbox
+      singleInbox: gs-single-inbox
+      singleOutbox: gs-single-outbox
+  db:
+    host: postgres
+    port: 5432
+    user: user
+    password: password
+    database: postgres
+    additionalParams: Pooling=true;MinPoolSize=0;MaxPoolSize=200;
+    type: postgresql
+    provider: ServiceStack.OrmLite.PostgreSqlDialect, ServiceStack.OrmLite.PostgreSQL, Culture=neutral, PublicKeyToken=null
+  redis:
+    host: redis-master
+    port: 6379
+    database: 1
+    additionalParams: null
+    connectAttempts: 5
+    reconnectInterval: 0.00:00:05
+    defaultExpiration: 0.02:00:00
+  requestTimeOut: 600000
+  incrementDays: 30
+  indexingContentLength: 500
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 80
+  periodSeconds: 20
+  failureThreshold: 3
+  timeoutSeconds: 30
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 80
+  periodSeconds: 20
+  failureThreshold: 3
+  timeoutSeconds: 30
+redis:
+  image:
+    repository: bitnamilegacy/redis
+    tag: 7.0.5-debian-11-r7
+  enabled: false
+rabbitmq:
+  image:
+    repository: bitnamilegacy/rabbitmq
+    tag: 3.13.1
+  enabled: false
+postgresql:
+  enabled: false
+  image:
+    repository: bitnamilegacy/postgresql
+    tag: 11.5.0-r90
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/postgresql
+      tag: 11.5.0-r90
+elasticsearch:
+  enabled: false
+  global:
+    security:
+      allowInsecureImages: true
+  image:
+    repository: bitnamilegacy/elasticsearch
+  volumePermissions:
+    image:
+      repository: bitnamilegacy/os-shell
+      tag: 12-debian-12-r40
+  sysctlImage:
+    repository: bitnamilegacy/os-shell
+    tag: 12-debian-12-r40
+  copyTlsCerts:
+    image:
+      repository: bitnamilegacy/os-shell
+      tag: 12-debian-12-r40

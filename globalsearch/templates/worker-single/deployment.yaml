@@ -1,0 +1,258 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-worker-single
+  labels:
+    app: {{ .Release.Name }}-worker-single
+    chart: {{ template "gs.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.workerSingle.replicaCount }}
+{{- with .Values.workerSingle.strategy }}
+  strategy:
+{{ toYaml . | indent 4  }}
+{{ end }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-worker-single
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        timestamp: {{ now | quote }}
+      labels:
+        app: {{ .Release.Name }}-worker-single
+        release: {{ .Release.Name }}
+    spec:
+      volumes:
+{{ if .Values.global.elasticsearch.tls.enable }}
+        - name: tls-certs
+          secret:
+            secretName: {{ include "global.elasticsearch.tlsSecretName" . }}
+            items:
+              - key: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
+                path: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+        - name: rabbitmq-tls-certs
+          secret:
+            secretName: {{ include "global.rabbitmq.tlsSecretName" . }}
+            items:
+              - key: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
+                path: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
+{{- end }}
+        - name: log4net-file
+          configMap:
+            name: {{ .Release.Name }}-logging-configmap
+            items:
+              - key: log4net.config
+                path: log4net.config
+{{ if .Values.workerSingle.nodeName }}
+      nodeName: {{ .Values.workerSingle.nodeName }}
+{{- end }}
+{{ if .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{ toYaml .Values.image.pullSecrets | indent 8 }}
+{{- end }}
+      initContainers:
+{{- if (include "global.rabbitmq.useCustomCaCertificate" . | trim | eq "true") }}
+        - name: wait-for-rabbitmq-cert
+          image: busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - >
+              echo "Waiting for RabbitMQ certificate secret...";
+              until [ -f {{ .Values.global.rabbitmq.tls.certificate.ca.path }}/{{ .Values.global.rabbitmq.tls.certificate.ca.name }} ];
+              do
+                echo "Certificate not available yet...";
+                sleep 5;
+              done;
+              echo "Certificate is available. Proceeding...";
+          volumeMounts:
+            - name: rabbitmq-tls-certs
+              mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
+              readOnly: true
+        - name: wait-for-rabbitmq
+          image: busybox:1.36.1
+          command:
+            - sh
+            - -c
+            - >
+              RABBITMQ_HOST="{{ .Values.global.rabbitmq.host }}";
+              RABBITMQ_PORT="{{ .Values.global.rabbitmq.port }}";
+              echo "Waiting for RabbitMQ to be available at $RABBITMQ_HOST:$RABBITMQ_PORT...";
+              until nc -z -v -w5 $RABBITMQ_HOST $RABBITMQ_PORT;
+              do
+                echo "RabbitMQ is not available yet at $RABBITMQ_HOST:$RABBITMQ_PORT...";
+                sleep 5;
+              done;
+              echo "RabbitMQ $RABBITMQ_HOST:$RABBITMQ_PORT is available and accepting connections.";
+{{- end }}
+{{ if .Values.global.elasticsearch.tls.enable }}
+        - name: wait-for-es-cert
+          image: busybox:1.37.0
+          command:
+            - sh
+            - -c
+            - >
+              echo "Waiting for Elasticsearch certificate secret...";
+              until [ -f {{ .Values.global.elasticsearch.tls.certificate.ca.path }}/{{ .Values.global.elasticsearch.tls.certificate.ca.name }} ];
+              do
+                echo "Certificate not available yet...";
+                sleep 5;
+              done;
+              echo "Certificate is available. Proceeding...";
+          volumeMounts:
+            - name: tls-certs
+              mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+        - name: wait-for-elasticsearch
+          image: alpine/curl:8.12.1
+          command:
+            - sh
+            - -c
+            - >
+              ELASTICSEARCH_URL=$(echo {{ .Values.global.elasticsearch.url }});
+              echo "Waiting for Elasticsearch to be available at $ELASTICSEARCH_URL...";
+              until curl --silent --fail -k
+              --user ${ELASTIC_USER}:${ELASTIC_PASSWORD}
+              --max-time 5 --connect-timeout 5
+              $ELASTICSEARCH_URL;
+              do
+                echo "Elasticsearch is not available yet $ELASTICSEARCH_URL...";
+                sleep 5;
+              done;
+              echo "Elasticsearch $ELASTICSEARCH_URL is available and responding. Proceeding...";
+          env:
+            - name: ELASTIC_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchUser
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchPassword
+{{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.workerSingle.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+{{ if .Values.global.elasticsearch.tls.enable }}
+            - name: tls-certs
+              mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+            - name: rabbitmq-tls-certs
+              mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+            - name: log4net-file
+              mountPath: {{ .Values.log4Net.mountPath }}
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+
+          env:
+            - name: RabbitMQSettings__RabbitQueueName
+              value: {{ .Values.global.rabbitmq.qname.singleInbox }}
+            - name: RabbitMQSettings__QueuePriorityEnable
+              value: '{{ .Values.global.rabbitmq.queuePriorityEnable }}'
+            - name: RabbitMQSettings__ReplyRabbitQueueName
+              value: {{ .Values.global.rabbitmq.qname.singleOutbox }}
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__IsEnabled
+              value: "{{ .Values.global.rabbitmq.tls.enable }}"
+{{- if (include "global.rabbitmq.useCustomCaCertificate" . | trim | eq "true") }}
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__CaCertificatePath
+              value: "{{ .Values.global.rabbitmq.tls.certificate.ca.path }}/{{ .Values.global.rabbitmq.tls.certificate.ca.name }}"
+{{- end }}
+{{ if .Values.global.rabbitmq.tls.enable }}
+            - name: RabbitMQSettings__ConnectionSettings__SslOptions__SkipCertificateValidation
+              value: "{{ .Values.global.rabbitmq.tls.certificate.skipCertificateValidation }}"
+{{- end }}
+            - name: Log4NetPath
+              value: {{ .Values.log4Net.mountPath }}/log4net.config
+            - name: IndexingContentLength
+              value: "{{ .Values.global.indexingContentLength | int64  }}"
+            - name: RequestTimeOut
+              value: "{{ .Values.global.requestTimeOut | int64  }}"
+            - name: IndexingCommandTimeout
+              value: "{{ .Values.workerSingle.env.indexingCommandTimeout | int64 }}"
+            - name: RabbitMQSettings__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: rabbitmqConnectionString
+            - name: OnSiteClientSettings__ElasticSearchUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Release.Name }}-global-config-map
+                  key: es.url
+            - name: elasticLogin
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchUser
+            - name: elasticPassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: elasticsearchPassword
+            - name: ElasticSearch__Tls__Enable
+              value: "{{ .Values.global.elasticsearch.tls.enable }}"
+{{ if .Values.global.elasticsearch.tls.enable }}
+            - name: ElasticSearch__Tls__CaCertificatePath
+              value: "{{ .Values.global.elasticsearch.tls.certificate.ca.path }}/{{ .Values.global.elasticsearch.tls.certificate.ca.name }}"
+{{- end }}
+            - name: CircuitBreaker__Enable
+              value: {{ .Values.global.circuitBreaker.enable | quote }}
+            - name: RedisCacheOptions__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-gs-secrets
+                  key: redisConnectionString
+            - name: TraceDebugInfo
+              value: "{{ .Values.global.elasticsearch.traceDebugInfo }}"
+            - name: TraceDebugInfoForIndex
+              value: "{{ .Values.global.elasticsearch.traceDebugInfoForIndex }}"   
+{{ if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /liveness
+              port: http
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+{{- end }}
+{{ if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: http
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+{{- end }}
+          resources:
+{{ toYaml .Values.workerSingle.resources | indent 12 }}
+    {{- with .Values.workerSingle.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.workerSingle.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.workerSingle.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}

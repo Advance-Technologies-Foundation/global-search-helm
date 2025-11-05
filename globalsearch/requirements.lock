@@ -1,0 +1,15 @@
+dependencies:
+- name: redis
+  repository: https://charts.helm.sh/stable
+  version: 10.3.2
+- name: rabbitmq
+  repository: https://charts.bitnami.com/bitnami
+  version: 14.5.0
+- name: postgresql
+  repository: https://charts.helm.sh/stable
+  version: 6.5.0
+- name: elasticsearch
+  repository: https://charts.bitnami.com/bitnami
+  version: 21.5.0
+digest: sha256:5c9288f6f1c8c5192decc22c658dc5d6b158954ad374d8ccc2646874f7e68b7c
+generated: "2025-04-10T08:30:22.47358+02:00"

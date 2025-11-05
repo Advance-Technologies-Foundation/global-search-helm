@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web-indexing-service
+  labels:
+    app: {{ .Release.Name }}-web-indexing-service
+    chart: {{ template "gs.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.webIndexingService.service.type }}
+  {{- if (and (eq .Values.webIndexingService.service.type "NodePort") (not (empty .Values.webIndexingService.service.externalTrafficPolicy))) }}
+  externalTrafficPolicy: {{ .Values.webIndexingService.service.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.webIndexingService.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+      {{- if (and (eq .Values.webIndexingService.service.type "NodePort") (not (empty .Values.webIndexingService.service.nodePort))) }}
+      nodePort: {{ .Values.webIndexingService.service.nodePort }}
+      {{- end }}
+  selector:
+    app: {{ .Release.Name }}-web-indexing-service
+    release: {{ .Release.Name }}

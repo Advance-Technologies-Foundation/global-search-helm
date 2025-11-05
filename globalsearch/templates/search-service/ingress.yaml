@@ -1,0 +1,66 @@
+{{- if .Values.searchService.ingress.enabled -}}
+{{- $ingressApiIsStable := eq (include "ingress.isStable" .) "true" -}}
+{{- $ingressSupportsPathType := eq (include "ingress.supportsPathType" .) "true" -}}
+{{- $ingressSupportsIngressClassName := eq (include "ingress.supportsIngressClassName" .) "true" -}}
+{{- $ingressPathType := .Values.searchService.ingress.pathType -}}
+{{- $ingressElasticPath := .Values.searchService.ingress.elastic.path -}}
+{{- $ingressRabbitPath := .Values.searchService.ingress.rabbitmq.path -}}
+apiVersion: {{ template "ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-search-service
+{{- with .Values.searchService.ingress.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+spec:
+  {{- if and $ingressSupportsIngressClassName .Values.searchService.ingress.className }}
+  ingressClassName: {{ .Values.searchService.ingress.className }}
+  {{- end }}
+  rules:
+  - host: {{ .Values.searchService.ingress.host }}
+    http:
+      paths:
+        - path: {{ .Values.searchService.ingress.path }}
+          {{- if $ingressSupportsPathType }}
+          pathType: {{ $ingressPathType }}
+          {{- end }}
+          backend:
+            {{- if $ingressApiIsStable }}
+            service:
+              name: {{ .Release.Name }}-search-service
+              port:
+                number: {{ .Values.searchService.service.port }}
+            {{- else }}
+            serviceName: {{ .Release.Name }}-search-service
+            servicePort: {{ .Values.searchService.service.port }}
+            {{- end }}
+        {{- if eq $.Values.searchService.ingress.elastic.enableEndpoint true }}
+        - path: {{ $ingressElasticPath }}
+          pathType: {{ $ingressPathType }}
+          backend:
+            {{- if $ingressApiIsStable }}
+            service:
+              name: {{ .Values.searchService.ingress.elastic.serviceName }}
+              port:
+                name: http
+            {{- else }}
+            serviceName: {{ .Values.searchService.ingress.elastic.serviceName }}
+            servicePort: http
+            {{- end }}
+        {{- end}}
+        {{- if eq $.Values.searchService.ingress.rabbitmq.enableEndpoint true }}
+        - path: {{ $ingressRabbitPath }}
+          pathType: {{ $ingressPathType }}
+          backend:
+            {{- if $ingressApiIsStable }}
+            service:
+              name: {{ .Values.searchService.ingress.rabbitmq.serviceName }}
+              port:
+                name: http
+            {{- else }}
+            serviceName: {{ .Values.searchService.ingress.rabbitmq.serviceName }}
+            servicePort: http
+            {{- end }}
+        {{- end}}
+{{- end }}

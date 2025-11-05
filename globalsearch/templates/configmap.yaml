@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-global-config-map
+  labels:
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    app: {{ template "gs.name" . }}
+data:
+  es.url: {{ .Values.global.elasticsearch.url }}
+  {{ if .Values.global.elasticsearch.publicUrl }}
+  es.publicUrl: {{ .Values.global.elasticsearch.publicUrl }}
+  {{ else }}
+  es.publicUrl: ""
+  {{ end }}
