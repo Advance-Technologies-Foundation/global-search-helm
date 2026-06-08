@@ -51,7 +51,7 @@ spec:
       initContainers:
 {{ if .Values.global.elasticsearch.tls.enable }}
         - name: wait-for-es-cert
-          image: busybox:1.37.0
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
           command:
             - sh
             - -c
@@ -67,6 +67,13 @@ spec:
             - name: tls-certs
               mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
               readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
 {{- end }}
         - name: wait-for-elasticsearch
           image: alpine/curl:8.12.1
@@ -89,13 +96,20 @@ spec:
             - name: ELASTIC_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: ELASTIC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.searchService.image.repository }}:{{ .Values.image.tag }}"
@@ -123,13 +137,13 @@ spec:
             - name: ElasticSearch__Login
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: ElasticSearch__Password
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
             - name: ElasticSearch__EnableDebugMode
               value: "{{ .Values.global.elasticsearch.enableDebugMode }}"
             - name: ElasticSearch__TraceDebugInfo

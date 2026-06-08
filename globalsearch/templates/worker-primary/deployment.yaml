@@ -43,6 +43,30 @@ spec:
               - key: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
                 path: {{ .Values.global.rabbitmq.tls.certificate.ca.name }}
 {{- end }}
+{{ if .Values.global.postgresTls.enable }}
+        - name: postgres-tls-certs
+          secret:
+            secretName: {{ .Values.global.postgresTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.postgresTls.caCertificateKey }}
+                path: {{ .Values.global.postgresTls.caCertificateKey }}
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+        - name: creatio-postgres-ca
+          secret:
+            secretName: {{ .Values.global.creatioDbCa.secretName }}
+            items:
+              - key: {{ .Values.global.creatioDbCa.key }}
+                path: {{ .Values.global.creatioDbCa.key }}
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+        - name: redis-tls-certs
+          secret:
+            secretName: {{ .Values.global.redisTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.redisTls.caCertificateKey }}
+                path: {{ .Values.global.redisTls.caCertificateKey }}
+{{- end }}
         - name: log4net-file
           configMap:
             name: {{ .Release.Name }}-logging-configmap
@@ -59,7 +83,7 @@ spec:
       initContainers:
 {{- if (include "global.rabbitmq.useCustomCaCertificate" . | trim | eq "true") }}
         - name: wait-for-rabbitmq-cert
-          image: busybox:1.37.0
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
           command:
             - sh
             - -c
@@ -75,8 +99,15 @@ spec:
             - name: rabbitmq-tls-certs
               mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
               readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
         - name: wait-for-rabbitmq
-          image: busybox:1.36.1
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
           command:
             - sh
             - -c
@@ -90,10 +121,17 @@ spec:
                 sleep 5;
               done;
               echo "RabbitMQ $RABBITMQ_HOST:$RABBITMQ_PORT is available and accepting connections.";
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
 {{- end }}
 {{ if .Values.global.elasticsearch.tls.enable }}
         - name: wait-for-es-cert
-          image: busybox:1.37.0
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
           command:
             - sh
             - -c
@@ -109,6 +147,13 @@ spec:
             - name: tls-certs
               mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
               readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
         - name: wait-for-elasticsearch
           image: alpine/curl:8.12.1
           command:
@@ -130,13 +175,20 @@ spec:
             - name: ELASTIC_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: ELASTIC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
 {{- end }}
       containers:
         - name: {{ .Chart.Name }}
@@ -151,6 +203,21 @@ spec:
 {{ if .Values.global.rabbitmq.tls.enable }}
             - name: rabbitmq-tls-certs
               mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.postgresTls.enable }}
+            - name: postgres-tls-certs
+              mountPath: {{ .Values.global.postgresTls.caCertificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: creatio-postgres-ca
+              mountPath: {{ .Values.global.creatioDbCa.certificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+            - name: redis-tls-certs
+              mountPath: {{ .Values.global.redisTls.caCertificatePath | dir }}
               readOnly: true
 {{- end }}
             - name: log4net-file
@@ -195,18 +262,18 @@ spec:
             - name: RabbitMQSettings__ConnectionString
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: rabbitmqConnectionString
+                  name: {{ include "rabbitmq.secretName" . }}
+                  key: {{ include "rabbitmq.connectionStringKey" . }}
             - name: ElasticSearch__Login
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: ElasticSearch__Password
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
             - name: ElasticSearch__Url
               valueFrom:
                 configMapKeyRef:
@@ -223,14 +290,34 @@ spec:
             - name: RedisCacheOptions__ConnectionString
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: redisConnectionString
+                  name: {{ include "redis.secretName" . }}
+                  key: {{ include "redis.connectionStringKey" . }}
+            - name: RedisTlsOptions__Enable
+              value: "{{ .Values.global.redisTls.enable }}"
+            - name: RedisTlsOptions__SslHost
+              value: "{{ default .Values.global.redis.host .Values.global.redisTls.sslHost }}"
+            - name: RedisTlsOptions__CaCertificatePath
+              value: "{{ .Values.global.redisTls.caCertificatePath }}"
             - name: RedisCacheOptions__ConnectAttempts
               value: "{{ .Values.global.redis.connectAttempts | int64 }}"
             - name: RedisCacheOptions__ReconnectInterval
               value: "{{ .Values.global.redis.reconnectInterval }}"
             - name: RedisCacheOptions__DefaultExpiration
               value: "{{ .Values.global.redis.defaultExpiration }}"
+            - name: PostgresTlsOptions__Enable
+              value: "{{ .Values.global.postgresTls.enable }}"
+            - name: PostgresTlsOptions__SslMode
+              value: "{{ .Values.global.postgresTls.sslMode }}"
+            - name: PostgresTlsOptions__TrustServerCertificate
+              value: "{{ .Values.global.postgresTls.trustServerCertificate }}"
+            - name: PostgresTlsOptions__RootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+            - name: PostgresTlsOptions__GlobalSearchRootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: PostgresTlsOptions__CreatioRootCertificatePath
+              value: "{{ .Values.global.creatioDbCa.certificatePath }}"
+{{- end }}
             - name: Log4NetPath
               value: {{ .Values.log4Net.mountPath }}/log4net.config
             - name: TraceDebugInfo

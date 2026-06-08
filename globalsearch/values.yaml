@@ -1,10 +1,69 @@
+dockerRegistry:
+  enabled: false
+busybox:
+  image: busybox
+  tag: 1.37.0
 image:
-  tag: 6.0.27
+  tag: 6.0.32
   pullPolicy: IfNotPresent
+vault:
+  agentInjector:
+    enabled: false
+    address: http://vault.vault.svc.cluster.local:8200
+    role: globalsearch
+    secretPath: secret/data/globalsearch
+    template: |
+      {{- with secret "secret/data/globalsearch" -}}
+      export DB_CONNECTION="{{ .Data.data.dbConnection }}"
+      export RABBITMQ_CONNECTION="{{ .Data.data.rabbitmqConnection }}"
+      export REDIS_CONNECTION="{{ .Data.data.redisConnection }}"
+      export ELASTIC_USER="{{ .Data.data.elasticUser }}"
+      export ELASTIC_PASSWORD="{{ .Data.data.elasticPassword }}"
+      {{- end -}}
+    annotations: {}
+  csi:
+    enabled: false
+    provider: vault
+    address: http://vault.vault.svc.cluster.local:8200
+    role: globalsearch
+    mountPath: /mnt/secrets-store
+    secretObjects:
+    - secretName: globalsearch-vault-secrets
+      type: Opaque
+      data:
+      - key: dbConnection
+        objectName: dbConnection
+      - key: rabbitmqConnection
+        objectName: rabbitmqConnection
+      - key: redisConnection
+        objectName: redisConnection
+      - key: elasticUser
+        objectName: elasticUser
+      - key: elasticPassword
+        objectName: elasticPassword
+    parameters:
+    - secretPath: secret/data/globalsearch
+      objectName: dbConnection
+      objectAlias: dbConnection
+    - secretPath: secret/data/globalsearch
+      objectName: rabbitmqConnection
+      objectAlias: rabbitmqConnection
+    - secretPath: secret/data/globalsearch
+      objectName: redisConnection
+      objectAlias: redisConnection
+    - secretPath: secret/data/globalsearch
+      objectName: elasticUser
+      objectAlias: elasticUser
+    - secretPath: secret/data/globalsearch
+      objectName: elasticPassword
+      objectAlias: elasticPassword
 webApi:
   replicaCount: 2
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-web-api
   resources:
@@ -30,6 +89,14 @@ webApi:
       ingress.kubernetes.io/rewrite-target: /
   env:
     ignoredEntities: UsrVwEmployee,UsrVwEmployeeFile,VwSysProcessLog,SysPrcHistoryLog,ActivityFile,MLModel,MLModelFile,SysSettings,VwWebServiceV2,Activity,UsrVwEmailActivity,CyclicTasks,CallCdr,CallCdrFile
+  lifecycle:
+    preStop:
+      enabled: true
+      sleepSeconds: 10
+  podAntiAffinity:
+    enabled: false
+    weight: 100
+    topologyKey: kubernetes.io/hostname
   affinity: {}
   tolerations: []
   nodeSelector: {}
@@ -39,6 +106,9 @@ webIndexingService:
   replicaCount: 2
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-web-indexing-service
   service:
@@ -73,6 +143,9 @@ searchService:
   replicaCount: 2
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-search-service
   service:
@@ -106,7 +179,10 @@ searchService:
 scheduler:
   replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   image:
     repository: registry.creatio.com/gs-scheduler
   resources:
@@ -122,9 +198,12 @@ scheduler:
   tolerations: []
   nodeSelector: {}
 worker:
-  replicaCount: 2
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker
   resources:
@@ -141,9 +220,12 @@ worker:
   tolerations: []
   nodeSelector: {}
 workerPrimary:
-  replicaCount: 2
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-primary
   resources:
@@ -160,9 +242,12 @@ workerPrimary:
   tolerations: []
   nodeSelector: {}
 workerReplay:
-  replicaCount: 3
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-replay
   resources:
@@ -176,9 +261,12 @@ workerReplay:
   tolerations: []
   nodeSelector: {}
 workerSingle:
-  replicaCount: 7
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-single
   resources:
@@ -194,9 +282,12 @@ workerSingle:
   tolerations: []
   nodeSelector: {}
 workerSingleReplay:
-  replicaCount: 4
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-single-replay
   resources:
@@ -210,9 +301,12 @@ workerSingleReplay:
   tolerations: []
   nodeSelector: {}
 workerSingleTask:
-  replicaCount: 7
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-single-task
   resources:
@@ -226,9 +320,12 @@ workerSingleTask:
   tolerations: []
   nodeSelector: {}
 workerQueriedSingleTask:
-  replicaCount: 5
+  replicaCount: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   image:
     repository: registry.creatio.com/gs-worker-queried-single-task
   elasticsearch:
@@ -262,22 +359,30 @@ global:
   circuitBreaker:
     enable: true
   elasticsearch:
-    url: http://elasticsearch-master:9200
+    url: ''
     publicUrl: ''
-    user: ''
-    password: ''
+    user: elastic
+    password: elastic-password
+    existingSecret: ''
+    existingSecretKeys:
+      username: username
+      password: password
+      connectionString: connectionString
     enableDebugMode: false
     traceDebugInfo: false
     traceDebugInfoForIndex: ''
+    tlsSecretName: ''
     tls:
-      enable: false
+      enable: true
       certificate:
         ca:
           name: ca.crt
-          path: /app/certs
+          path: /app/certs/elasticsearch
         copyFrom:
-          secretName: elasticsearch-master-crt
+          secretName: ''
           fullSecretNameOverride: ''
+  security:
+    allowInsecureImages: true
   searchService:
     url: http://search-service:80
   identityProvider:
@@ -286,11 +391,14 @@ global:
   webApi:
     url: ''
   rabbitmq:
-    host: rabbitmq
+    host: globalsearch-rabbitmq
     vhost: /
     port: 5672
-    user: user
-    password: password
+    user: null
+    password: null
+    existingSecret: ''
+    existingSecretKeys:
+      connectionString: rabbitmqConnectionString
     queuePriorityEnable: false
     connectionSettings:
       networkRecoveryInterval: 00:00:05
@@ -298,16 +406,6 @@ global:
       requestedConnectionTimeout: 10000
     tls:
       enable: false
-      networkRecoveryInterval: 5000
-      useCustomCaCertificate: false
-      certificate:
-        ca:
-          name: tls.crt
-          path: /app/certs/rabbitmq
-        copyFrom:
-          secretName: rabbitmq-certs
-          fullSecretNameOverride: ''
-        skipCertificateValidation: false
     qname:
       inbox: gs-inbox
       primaryInbox: gs-primary-inbox
@@ -317,71 +415,213 @@ global:
       singleInbox: gs-single-inbox
       singleOutbox: gs-single-outbox
   db:
-    host: postgres
+    host: globalsearch-postgresql
     port: 5432
-    user: user
-    password: password
+    user: postgres
+    password: postgres-password
+    existingSecret: ''
+    existingSecretKeys:
+      connectionString: connectionString
     database: postgres
     additionalParams: Pooling=true;MinPoolSize=0;MaxPoolSize=200;
     type: postgresql
     provider: ServiceStack.OrmLite.PostgreSqlDialect, ServiceStack.OrmLite.PostgreSQL, Culture=neutral, PublicKeyToken=null
+    postgresTls:
+      enable: false
+      sslMode: Require
+      trustServerCertificate: false
+      caCertificatePath: /app/certs/postgres/ca.crt
+      caCertificateSecretName: globalsearch-postgresql-crt
+      caCertificateKey: ca.crt
+    creatioDbCa:
+      enabled: false
+      secretName: globalsearch-creatio-postgresql-ca
+      key: ca.crt
+      inlinePem: ''
+      certificatePath: /app/certs/postgres/creatio/ca.crt
   redis:
-    host: redis-master
+    host: globalsearch-redis-master
     port: 6379
     database: 1
-    additionalParams: null
+    password: redis-password
+    existingSecret: ''
+    existingSecretKeys:
+      connectionString: connectionString
+    additionalParams: ',abortConnect=true,allowAdmin=true'
     connectAttempts: 5
     reconnectInterval: 0.00:00:05
-    defaultExpiration: 0.02:00:00
+    defaultExpiration: 0.01:00:00
+    tlsSecretName: ''
+    tls:
+      enable: false
+  redisTls:
+    enable: false
+    sslHost: ''
+    caCertificatePath: /app/certs/redis/ca.crt
+    caCertificateSecretName: globalsearch-redis-crt
+    caCertificateKey: ca.crt
+  creatioDbCa:
+    enabled: false
+  postgresTls:
+    enable: false
   requestTimeOut: 600000
   incrementDays: 30
   indexingContentLength: 500
+  pullIndexationConfigEnabled: true
+startupProbe:
+  enabled: true
+  failureThreshold: 160
+  periodSeconds: 5
+  timeoutSeconds: 10
 livenessProbe:
   enabled: true
-  initialDelaySeconds: 80
-  periodSeconds: 20
+  initialDelaySeconds: 5
+  periodSeconds: 10
   failureThreshold: 3
-  timeoutSeconds: 30
+  timeoutSeconds: 10
 readinessProbe:
   enabled: true
-  initialDelaySeconds: 80
-  periodSeconds: 20
+  initialDelaySeconds: 5
+  periodSeconds: 5
   failureThreshold: 3
-  timeoutSeconds: 30
+  timeoutSeconds: 10
 redis:
+  enabled: true
+  fullnameOverride: globalsearch-redis
+  host: globalsearch-redis-master
+  auth:
+    enabled: true
+    password: redis-password
+    existingSecret: ''
   image:
-    repository: bitnamilegacy/redis
-    tag: 7.0.5-debian-11-r7
-  enabled: false
+    registry: registry.creatio.com
+    repository: globalsearch-redis
+    tag: 6.0.30
+    pullPolicy: IfNotPresent
+  tls:
+    enabled: false
+  commonConfiguration: |-
+    appendonly yes
+    save ""
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 70m
+      limits:
+        memory: 256Mi
+        cpu: 70m
+  replica:
+    replicaCount: 0
 rabbitmq:
+  enabled: true
+  fullnameOverride: globalsearch-rabbitmq
   image:
-    repository: bitnamilegacy/rabbitmq
-    tag: 3.13.1
-  enabled: false
+    registry: registry.creatio.com
+    pullPolicy: IfNotPresent
+    repository: globalsearch-rabbitmq
+    tag: 6.0.30
+  auth:
+    username: rabbitmq-user
+    password: rabbitmq-password
+  extraEnvVars:
+  - name: RABBITMQ_MNESIA_BASE
+    value: /opt/bitnami/rabbitmq/.rabbitmq/mnesia
+  - name: RABBITMQ_DEFAULT_USER
+    value: rabbitmq-user
+  - name: RABBITMQ_DEFAULT_PASS
+    value: rabbitmq-password
+  persistence:
+    enabled: false
+    mountPath: /opt/bitnami/rabbitmq/.rabbitmq/mnesia
+    subPath: ''
+  volumePermissions:
+    enabled: false
+  command:
+  - /bin/bash
+  - -ec
+  args:
+  - |
+    exec docker-entrypoint.sh rabbitmq-server
+  service:
+    type: ClusterIP
 postgresql:
-  enabled: false
+  enabled: true
+  fullnameOverride: globalsearch-postgresql
   image:
-    repository: bitnamilegacy/postgresql
-    tag: 11.5.0-r90
-  volumePermissions:
-    image:
-      repository: bitnamilegacy/postgresql
-      tag: 11.5.0-r90
+    registry: registry.creatio.com
+    repository: globalsearch-postgresql
+    tag: 6.0.30
+    pullPolicy: IfNotPresent
+  tls:
+    enabled: false
+  primary:
+    extraEnvVars:
+    - name: PGDATA
+      value: /var/lib/postgresql/data
+    - name: POSTGRESQL_PASSWORD
+      value: postgres-password
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      readOnlyRootFilesystem: false
+    podSecurityContext:
+      fsGroup: 1001
+    persistence:
+      enabled: false
+      size: 2Gi
+      mountPath: /var/lib/postgresql
+      accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 100m
+  auth:
+    username: postgres
+    password: postgres-password
+    database: postgres
+    forcePassword: true
 elasticsearch:
-  enabled: false
-  global:
-    security:
-      allowInsecureImages: true
-  image:
-    repository: bitnamilegacy/elasticsearch
-  volumePermissions:
-    image:
-      repository: bitnamilegacy/os-shell
-      tag: 12-debian-12-r40
-  sysctlImage:
-    repository: bitnamilegacy/os-shell
-    tag: 12-debian-12-r40
-  copyTlsCerts:
-    image:
-      repository: bitnamilegacy/os-shell
-      tag: 12-debian-12-r40
+  enabled: true
+  fullnameOverride: ''
+  url: ''
+  image: docker.elastic.co/elasticsearch/elasticsearch
+  imageTag: 8.19.8
+  clusterName: elasticsearch
+  replicas: 1
+  discovery:
+    type: single-node
+  minimumMasterNodes: 1
+  esJavaOpts: -Xms2g -Xmx2g
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+  persistence:
+    enabled: false
+  volumeClaimTemplate:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+  createCert: true
+  protocol: https
+  esConfig:
+    elasticsearch.yml: |
+      xpack.security.enabled: true
+  secret:
+    enabled: true
+    password: elastic-password
+  antiAffinity: soft

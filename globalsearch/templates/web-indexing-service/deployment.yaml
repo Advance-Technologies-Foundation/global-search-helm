@@ -35,6 +35,30 @@ spec:
               - key: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
                 path: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
 {{- end }}
+{{ if .Values.global.postgresTls.enable }}
+        - name: postgres-tls-certs
+          secret:
+            secretName: {{ .Values.global.postgresTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.postgresTls.caCertificateKey }}
+                path: {{ .Values.global.postgresTls.caCertificateKey }}
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+        - name: creatio-postgres-ca
+          secret:
+            secretName: {{ .Values.global.creatioDbCa.secretName }}
+            items:
+              - key: {{ .Values.global.creatioDbCa.key }}
+                path: {{ .Values.global.creatioDbCa.key }}
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+        - name: redis-tls-certs
+          secret:
+            secretName: {{ .Values.global.redisTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.redisTls.caCertificateKey }}
+                path: {{ .Values.global.redisTls.caCertificateKey }}
+{{- end }}
 {{ if .Values.global.rabbitmq.tls.enable }}
         - name: rabbitmq-tls-certs
           secret:
@@ -56,6 +80,45 @@ spec:
       imagePullSecrets:
         {{ toYaml .Values.image.pullSecrets | indent 8 }}
 {{- end }}
+      initContainers:
+{{- if (include "global.rabbitmq.useCustomCaCertificate" . | trim | eq "true") }}
+        - name: wait-for-rabbitmq-cert
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
+          command:
+            - sh
+            - -c
+            - >
+              echo "Waiting for RabbitMQ certificate secret...";
+              until [ -f {{ .Values.global.rabbitmq.tls.certificate.ca.path }}/{{ .Values.global.rabbitmq.tls.certificate.ca.name }} ];
+              do
+                echo "Certificate not available yet...";
+                sleep 5;
+              done;
+              echo "Certificate is available. Proceeding...";
+          volumeMounts:
+            - name: rabbitmq-tls-certs
+              mountPath: {{ .Values.global.rabbitmq.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.elasticsearch.tls.enable }}
+        - name: wait-for-es-cert
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
+          command:
+            - sh
+            - -c
+            - >
+              echo "Waiting for Elasticsearch certificate secret...";
+              until [ -f {{ .Values.global.elasticsearch.tls.certificate.ca.path }}/{{ .Values.global.elasticsearch.tls.certificate.ca.name }} ];
+              do
+                echo "Certificate not available yet...";
+                sleep 5;
+              done;
+              echo "Certificate is available. Proceeding...";
+          volumeMounts:
+            - name: tls-certs
+              mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.webIndexingService.image.repository }}:{{ .Values.image.tag }}"
@@ -66,6 +129,21 @@ spec:
 {{ if .Values.global.elasticsearch.tls.enable }}
             - name: tls-certs
               mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.postgresTls.enable }}
+            - name: postgres-tls-certs
+              mountPath: {{ .Values.global.postgresTls.caCertificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: creatio-postgres-ca
+              mountPath: {{ .Values.global.creatioDbCa.certificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+            - name: redis-tls-certs
+              mountPath: {{ .Values.global.redisTls.caCertificatePath | dir }}
               readOnly: true
 {{- end }}
 {{ if .Values.global.rabbitmq.tls.enable }}
@@ -110,14 +188,34 @@ spec:
             - name: RedisCacheOptions__ConnectionString
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: redisConnectionString
+                  name: {{ include "redis.secretName" . }}
+                  key: {{ include "redis.connectionStringKey" . }}
+            - name: RedisTlsOptions__Enable
+              value: "{{ .Values.global.redisTls.enable }}"
+            - name: RedisTlsOptions__SslHost
+              value: "{{ default .Values.global.redis.host .Values.global.redisTls.sslHost }}"
+            - name: RedisTlsOptions__CaCertificatePath
+              value: "{{ .Values.global.redisTls.caCertificatePath }}"
             - name: RedisCacheOptions__ConnectAttempts
               value: {{ .Values.global.redis.connectAttempts | quote }}
             - name: RedisCacheOptions__ReconnectInterval
               value: {{ .Values.global.redis.reconnectInterval }}
             - name: RedisCacheOptions__DefaultExpiration
               value: {{ .Values.global.redis.defaultExpiration }}
+            - name: PostgresTlsOptions__Enable
+              value: "{{ .Values.global.postgresTls.enable }}"
+            - name: PostgresTlsOptions__SslMode
+              value: "{{ .Values.global.postgresTls.sslMode }}"
+            - name: PostgresTlsOptions__TrustServerCertificate
+              value: "{{ .Values.global.postgresTls.trustServerCertificate }}"
+            - name: PostgresTlsOptions__RootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+            - name: PostgresTlsOptions__GlobalSearchRootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: PostgresTlsOptions__CreatioRootCertificatePath
+              value: "{{ .Values.global.creatioDbCa.certificatePath }}"
+{{- end }}
             - name: elasticSearchUrl
               valueFrom:
                 configMapKeyRef:
@@ -126,13 +224,13 @@ spec:
             - name: elasticLogin
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: elasticPassword
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
             - name: ElasticSearch__Tls__Enable
               value: "{{ .Values.global.elasticsearch.tls.enable }}"
 {{ if .Values.global.elasticsearch.tls.enable }}
@@ -142,8 +240,8 @@ spec:
             - name: RabbitMQSettings__ConnectionString
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: rabbitmqConnectionString
+                  name: {{ include "rabbitmq.secretName" . }}
+                  key: {{ include "rabbitmq.connectionStringKey" . }}
             - name: Log4NetPath
               value: {{ .Values.log4Net.mountPath }}/log4net.config
 {{ if .Values.livenessProbe.enabled }}

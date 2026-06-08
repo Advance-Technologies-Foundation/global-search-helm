@@ -22,11 +22,28 @@ spec:
       annotations:
         prometheus.io/scrape: "true"
         timestamp: {{ now | quote }}
+        {{- if .Values.vault.agentInjector.enabled }}
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: {{ .Values.vault.agentInjector.role | quote }}
+        vault.hashicorp.com/agent-inject-secret-config: {{ .Values.vault.agentInjector.secretPath | quote }}
+        vault.hashicorp.com/agent-inject-template-config: {{ .Values.vault.agentInjector.template | quote }}
+        {{- range $key, $value := .Values.vault.agentInjector.annotations }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
       labels:
         app: {{ .Release.Name }}-web-api
         release: {{ .Release.Name }}
     spec:
       volumes:
+{{- if .Values.vault.csi.enabled }}
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ .Release.Name }}-vault-secrets
+{{- end }}
 {{ if .Values.global.elasticsearch.tls.enable }}
         - name: tls-certs
           secret:
@@ -34,6 +51,30 @@ spec:
             items:
               - key: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
                 path: {{ .Values.global.elasticsearch.tls.certificate.ca.name }}
+{{- end }}
+{{ if .Values.global.postgresTls.enable }}
+        - name: postgres-tls-certs
+          secret:
+            secretName: {{ .Values.global.postgresTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.postgresTls.caCertificateKey }}
+                path: {{ .Values.global.postgresTls.caCertificateKey }}
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+        - name: creatio-postgres-ca
+          secret:
+            secretName: {{ .Values.global.creatioDbCa.secretName }}
+            items:
+              - key: {{ .Values.global.creatioDbCa.key }}
+                path: {{ .Values.global.creatioDbCa.key }}
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+        - name: redis-tls-certs
+          secret:
+            secretName: {{ .Values.global.redisTls.caCertificateSecretName }}
+            items:
+              - key: {{ .Values.global.redisTls.caCertificateKey }}
+                path: {{ .Values.global.redisTls.caCertificateKey }}
 {{- end }}
         - name: log4net-file
           configMap:
@@ -51,7 +92,7 @@ spec:
       initContainers:
 {{ if .Values.global.elasticsearch.tls.enable }}
         - name: wait-for-es-cert
-          image: busybox:1.37.0
+          image: {{ .Values.busybox.image }}:{{ .Values.busybox.tag }}
           command:
             - sh
             - -c
@@ -67,6 +108,13 @@ spec:
             - name: tls-certs
               mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
               readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
 {{- end }}
         - name: wait-for-elasticsearch
           image: alpine/curl:8.12.1
@@ -89,21 +137,54 @@ spec:
             - name: ELASTIC_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: ELASTIC_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.webApi.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+{{ if .Values.webApi.lifecycle.preStop.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep {{ .Values.webApi.lifecycle.preStop.sleepSeconds }}"]
+{{- end }}
           volumeMounts:
 {{ if .Values.global.elasticsearch.tls.enable }}
             - name: tls-certs
               mountPath: {{ .Values.global.elasticsearch.tls.certificate.ca.path }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.postgresTls.enable }}
+            - name: postgres-tls-certs
+              mountPath: {{ .Values.global.postgresTls.caCertificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: creatio-postgres-ca
+              mountPath: {{ .Values.global.creatioDbCa.certificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{ if .Values.global.redisTls.enable }}
+            - name: redis-tls-certs
+              mountPath: {{ .Values.global.redisTls.caCertificatePath | dir }}
+              readOnly: true
+{{- end }}
+{{- if .Values.vault.csi.enabled }}
+            - name: secrets-store
+              mountPath: {{ .Values.vault.csi.mountPath }}
               readOnly: true
 {{- end }}
             - name: log4net-file
@@ -118,25 +199,47 @@ spec:
             - name: connectionStrings__db
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: databaseConnectionString
+                  name: {{ include "db.secretName" . }}
+                  key: {{ include "db.connectionStringKey" . }}
             - name: connectionStrings__DbType
               value: "{{ .Values.global.db.type }}"
             - name: RedisCacheOptions__ConnectionString
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: redisConnectionString
+                  name: {{ include "redis.secretName" . }}
+                  key: {{ include "redis.connectionStringKey" . }}
+            - name: RedisTlsOptions__Enable
+              value: "{{ .Values.global.redisTls.enable }}"
+            - name: RedisTlsOptions__SslHost
+              value: "{{ default .Values.global.redis.host .Values.global.redisTls.sslHost }}"
+            - name: RedisTlsOptions__CaCertificatePath
+              value: "{{ .Values.global.redisTls.caCertificatePath }}"
             - name: RedisCacheOptions__ConnectAttempts
               value: {{ .Values.global.redis.connectAttempts | quote }}
             - name: RedisCacheOptions__ReconnectInterval
               value: {{ .Values.global.redis.reconnectInterval }}
             - name: RedisCacheOptions__DefaultExpiration
               value: {{ .Values.global.redis.defaultExpiration }}
+            - name: PostgresTlsOptions__Enable
+              value: "{{ .Values.global.postgresTls.enable }}"
+            - name: PostgresTlsOptions__SslMode
+              value: "{{ .Values.global.postgresTls.sslMode }}"
+            - name: PostgresTlsOptions__TrustServerCertificate
+              value: "{{ .Values.global.postgresTls.trustServerCertificate }}"
+            - name: PostgresTlsOptions__RootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+            - name: PostgresTlsOptions__GlobalSearchRootCertificatePath
+              value: "{{ .Values.global.postgresTls.caCertificatePath }}"
+{{ if .Values.global.creatioDbCa.enabled }}
+            - name: PostgresTlsOptions__CreatioRootCertificatePath
+              value: "{{ .Values.global.creatioDbCa.certificatePath }}"
+{{- end }}
             - name: RequestTimeOut
               value: "{{ .Values.global.requestTimeOut | int64 }}"
             - name: ScheduledIndexationConfiguration__IndexingIntervalInDays
               value: "{{ .Values.global.incrementDays | int64 }}"
+            - name: PullIndexationConfiguration__Enabled
+              value: "{{ .Values.global.pullIndexationConfigEnabled }}"
             - name: searchServiceUrl
               value: "{{ .Values.global.searchService.url }}"
             - name: elasticSearchUrl
@@ -147,13 +250,13 @@ spec:
             - name: elasticLogin
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchUser
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.usernameKey" . }}
             - name: elasticPassword
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-gs-secrets
-                  key: elasticsearchPassword
+                  name: {{ include "elasticsearch.secretName" . }}
+                  key: {{ include "elasticsearch.passwordKey" . }}
             - name: ElasticSearch__Tls__Enable
               value: "{{ .Values.global.elasticsearch.tls.enable }}"
 {{ if .Values.global.elasticsearch.tls.enable }}
@@ -174,6 +277,15 @@ spec:
               value: "{{ .Values.webApi.completionPortThreads | int64  }}"
             - name: CircuitBreaker__Enable
               value: {{ .Values.global.circuitBreaker.enable | quote }}
+{{ if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /liveness
+              port: http
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+{{- end }}
 {{ if .Values.livenessProbe.enabled }}
           livenessProbe:
             httpGet:
@@ -200,9 +312,21 @@ spec:
       nodeSelector:
 {{ toYaml . | indent 8 }}
     {{- end }}
-    {{- with .Values.webApi.affinity }}
+    {{- if or .Values.webApi.affinity .Values.webApi.podAntiAffinity.enabled }}
       affinity:
+      {{- if .Values.webApi.podAntiAffinity.enabled }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ .Values.webApi.podAntiAffinity.weight }}
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: {{ .Release.Name }}-web-api
+                topologyKey: {{ .Values.webApi.podAntiAffinity.topologyKey }}
+      {{- end }}
+      {{- with .Values.webApi.affinity }}
 {{ toYaml . | indent 8 }}
+      {{- end }}
     {{- end }}
     {{- with .Values.webApi.tolerations }}
       tolerations:

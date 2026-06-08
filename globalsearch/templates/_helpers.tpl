@@ -95,7 +95,7 @@ Returns global search database connection stirng.
 Returns redis connection stirng.
 */}}
 {{- define "redis.connectionString" -}}
-    {{ .Values.global.redis.host }}:{{ .Values.global.redis.port }},defaultDatabase={{ .Values.global.redis.database }}{{ .Values.global.redis.additionalParams | default "" }}
+    {{ .Values.global.redis.host }}:{{ .Values.global.redis.port }},password={{ .Values.global.redis.password }},defaultDatabase={{ .Values.global.redis.database }}{{ .Values.global.redis.additionalParams | default "" }}
 {{- end -}}
 {{/*
 Returns the appropriate Elasticsearch TLS secret name based on configuration
@@ -103,8 +103,10 @@ Returns the appropriate Elasticsearch TLS secret name based on configuration
 {{- define "global.elasticsearch.tlsSecretName" -}}
     {{- if .Values.global.elasticsearch.tls.certificate.copyFrom.fullSecretNameOverride -}}
         {{- .Values.global.elasticsearch.tls.certificate.copyFrom.fullSecretNameOverride -}}
-    {{- else -}}
+    {{- else if .Values.global.elasticsearch.tls.certificate.copyFrom.secretName -}}
         {{- .Release.Name }}-{{ .Values.global.elasticsearch.tls.certificate.copyFrom.secretName -}}
+    {{- else -}}
+        {{- .Release.Name }}-elasticsearch-certs
     {{- end -}}
 {{- end -}}
 
@@ -125,3 +127,121 @@ Returns if custom ca certificate is used in RabbitMq TLS
 {{- define "global.rabbitmq.useCustomCaCertificate" -}}
     {{- and .Values.global.rabbitmq.tls.enable .Values.global.rabbitmq.tls.useCustomCaCertificate -}}
 {{- end -}}
+
+{{/*
+Returns the secret name for Elasticsearch credentials
+*/}}
+{{- define "elasticsearch.secretName" -}}
+    {{- if .Values.global.elasticsearch.existingSecret -}}
+        {{- .Values.global.elasticsearch.existingSecret -}}
+    {{- else -}}
+        {{- .Release.Name }}-gs-secrets
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret name for RabbitMQ credentials
+*/}}
+{{- define "rabbitmq.secretName" -}}
+    {{- if .Values.global.rabbitmq.existingSecret -}}
+        {{- .Values.global.rabbitmq.existingSecret -}}
+    {{- else -}}
+        {{- .Release.Name }}-gs-secrets
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret name for PostgreSQL credentials
+*/}}
+{{- define "db.secretName" -}}
+    {{- if .Values.global.db.existingSecret -}}
+        {{- .Values.global.db.existingSecret -}}
+    {{- else -}}
+        {{- .Release.Name }}-gs-secrets
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret name for Redis credentials
+*/}}
+{{- define "redis.secretName" -}}
+    {{- if .Values.global.redis.existingSecret -}}
+        {{- .Values.global.redis.existingSecret -}}
+    {{- else -}}
+        {{- .Release.Name }}-gs-secrets
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for Elasticsearch username
+*/}}
+{{- define "elasticsearch.usernameKey" -}}
+    {{- if .Values.global.elasticsearch.existingSecret -}}
+        {{- .Values.global.elasticsearch.existingSecretKeys.username -}}
+    {{- else -}}
+        elasticsearchUser
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for Elasticsearch password
+*/}}
+{{- define "elasticsearch.passwordKey" -}}
+    {{- if .Values.global.elasticsearch.existingSecret -}}
+        {{- .Values.global.elasticsearch.existingSecretKeys.password -}}
+    {{- else -}}
+        elasticsearchPassword
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for RabbitMQ connection string
+*/}}
+{{- define "rabbitmq.connectionStringKey" -}}
+    {{- if .Values.global.rabbitmq.existingSecret -}}
+        {{- .Values.global.rabbitmq.existingSecretKeys.connectionString -}}
+    {{- else -}}
+        rabbitmqConnectionString
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for PostgreSQL connection string
+*/}}
+{{- define "db.connectionStringKey" -}}
+    {{- if .Values.global.db.existingSecret -}}
+        {{- .Values.global.db.existingSecretKeys.connectionString -}}
+    {{- else -}}
+        databaseConnectionString
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for Redis connection string
+*/}}
+{{- define "redis.connectionStringKey" -}}
+    {{- if .Values.global.redis.existingSecret -}}
+        {{- .Values.global.redis.existingSecretKeys.connectionString -}}
+    {{- else -}}
+        redisConnectionString
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the secret key for Elasticsearch connection string (optional - for full URL with auth)
+*/}}
+{{- define "elasticsearch.connectionStringKey" -}}
+    {{- if .Values.global.elasticsearch.existingSecret -}}
+        {{- .Values.global.elasticsearch.existingSecretKeys.connectionString -}}
+    {{- else -}}
+        elasticsearchConnectionString
+    {{- end -}}
+{{- end -}}
+
+{{/*
+Returns the Elasticsearch URL.
+*/}}
+{{- define "elasticsearch.url" -}}
+    {{- .Values.global.elasticsearch.url -}}
+{{- end -}}
+
