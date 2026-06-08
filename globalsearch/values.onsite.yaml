@@ -1,0 +1,225 @@
+dockerRegistry:
+  enabled: true
+  secretName: registry.creatio.com
+  server: registry.creatio.com
+  username: <username>
+  password: <password>
+  email: <email>
+
+image:
+  pullSecrets:
+    - name: registry.creatio.com
+
+webApi:
+  service:
+    type: NodePort
+    nodePort: 32020
+  ingress:
+    enabled: true
+    host: gs-api.example.com
+
+webIndexingService:
+  service:
+    type: NodePort
+    nodePort: 32021
+  ingress:
+    enabled: true
+    host: gs-indexing.example.com
+
+searchService:
+  replicaCount: 1
+  service:
+    type: NodePort
+    nodePort: 30332
+  ingress:
+    enabled: true
+    host: gs-search.example.com
+
+scheduler:
+  replicaCount: 1
+
+workerPrimary:
+  replicaCount: 1
+
+worker:
+  replicaCount: 1
+
+workerReplay:
+  replicaCount: 1
+
+workerSingle:
+  replicaCount: 1
+
+workerSingleReplay:
+  replicaCount: 1
+
+workerSingleTask:
+  replicaCount: 1
+
+workerQueriedSingleTask:
+  replicaCount: 1
+
+log4Net:
+  debugMode: false
+  level: ERROR
+  grayLog:
+    enabled: false
+
+global:
+  imagePullSecrets:
+    - name: registry.creatio.com
+
+  elasticsearch:
+    url: https://globalsearch-elasticsearch:9200
+
+  identityProvider:
+    url: "https://identity.example.com"
+    useOAuth: false
+
+  searchService:
+    url: http://gs-search.example.com
+
+  webApi:
+    url: http://gs-api.example.com
+
+  rabbitmq:
+    host: globalsearch-rabbitmq
+    port: 5672
+    user: rabbitmq-user
+    password: rabbitmq-password
+    queuePriorityEnable: true
+    qname:
+      inbox: gs-inbox
+      primaryInbox: gs-primary-inbox
+      outbox: gs-outbox
+      singleTaskInbox: gs-single-task-inbox
+      singleQueriedTaskInbox: gs-single-queried-task-inbox
+      singleInbox: gs-single-inbox
+      singleOutbox: gs-single-outbox
+  db:
+    host: globalsearch-postgresql
+    user: postgres
+    password: postgres-password
+    database: postgres
+    additionalParams: Pooling=true;MinPoolSize=0;MaxPoolSize=200;
+  redis:
+    host: globalsearch-redis-master
+    port: 6379
+    database: 2
+    defaultExpiration: 0.00:30:00
+    additionalParams: ""
+  incrementDays: 500
+
+redis:
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+rabbitmq:
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 1000m
+    limits:
+      memory: 512Mi
+      cpu: 1000m
+  persistence:
+    enabled: true
+    size: 5Gi
+  auth:
+    username: rabbitmq-user
+    password: rabbitmq-password
+  extraEnvVars:
+    - name: RABBITMQ_MNESIA_BASE
+      value: "/opt/bitnami/rabbitmq/.rabbitmq/mnesia"
+    - name: RABBITMQ_DEFAULT_USER
+      value: "rabbitmq-user"
+    - name: RABBITMQ_DEFAULT_PASS
+      value: "rabbitmq-password"
+  hostAliases:
+    - ip: "127.0.0.1"
+      hostnames:
+        - "rabbitmq-0"
+        - "rabbitmq-0.rabbitmq-headless.svc.cluster.local"
+postgresql:
+  primary:
+    extraEnvVars:
+      - name: PGDATA
+        value: "/var/lib/postgresql/data"
+    resources:
+      requests:
+        memory: 1024Mi
+        cpu: 500m
+      limits:
+        memory: 1024Mi
+        cpu: 500m
+    persistence:
+      enabled: true
+      size: 1Gi
+    initContainers:
+      - name: fix-permissions
+        # Note: This should match busybox.image and busybox.tag from values.yaml
+        image: busybox:1.37.0
+        command:
+          - sh
+          - -c
+          - |
+            set -eux
+            mkdir -p /var/lib/postgresql/data
+            chown -R 1001:1001 /var/lib/postgresql
+            chmod 700 /var/lib/postgresql/data
+        securityContext:
+          runAsUser: 0
+        resources:
+          limits:
+            cpu: 50m
+            memory: 128Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+        volumeMounts:
+          - mountPath: /var/lib/postgresql
+            name: data
+
+elasticsearch:
+  enabled: true
+  imagePullSecrets:
+    - name: registry.creatio.com
+  replicas: 1
+  minimumMasterNodes: 1
+  esJavaOpts: "-Xms2g -Xmx2g"
+  persistence:
+    enabled: true
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    resources:
+      requests:
+        storage: 5Gi
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 1000m
+      memory: 4Gi
+  secret:
+    password: elastic-password
+  # Disable unnecessary X-Pack features for faster startup (ES 8.x compatible)
+  extraEnvs:
+    - name: xpack.ml.enabled
+      value: "false"
+    - name: xpack.graph.enabled
+      value: "false"
+    - name: xpack.watcher.enabled
+      value: "false"
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: gs-elastic.example.com
+        paths:
+          - path: /
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+      ingress.kubernetes.io/ssl-redirect: "false"
+      ingress.kubernetes.io/rewrite-target: /
